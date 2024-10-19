@@ -1,0 +1,94 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus
+  namespace: argocd
+spec:
+  destination:
+    namespace: monitoring
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: kube-prometheus-stack
+    repoURL: https://prometheus-community.github.io/helm-charts
+    targetRevision: 33.2.0
+    helm:
+      skipCrds: true
+      values: |
+        prometheus:
+          prometheusSpec:
+            serviceMonitorSelectorNilUsesHelmValues: false
+            resources:
+              requests:
+                memory: "500Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+        grafana:
+          grafana.ini:
+            feature_toggles:
+              enable: tempoSearch
+          persistence:
+            type: statefulset
+            enabled: true
+            size: 5Gi
+            storageClassName: local-storage
+          datasources:
+            datasources.yaml:
+              apiVersion: 1
+              datasources:
+              - name: Loki
+                type: loki
+                uid: Loki
+                access: proxy
+                editable: false
+                url: http://loki-gateway.monitoring:80
+                jsonData:
+                  derivedFields:
+                    - datasourceUid: Tempo
+                      matcherRegex: "(?:traceID|traceId)(?:=|\\s)(\\w+)"
+                      name: TraceID
+                      url: "$${__value.raw}"
+              - name: Tempo
+                type: tempo
+                uid: Tempo
+                access: proxy
+                editable: false
+                url: http://tempo-gateway.monitoring:80
+          resources:
+            requests:
+              memory: "200Mi"
+              cpu: "100m"
+            limits:
+              memory: "500Mi"
+              cpu: "200m"
+          sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              folder: /tmp/dashboards
+              searchNamespace: ALL
+              resources:
+                requests:
+                  memory: "100Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "200Mi"
+                  cpu: "100m"
+            datasources:
+              enabled: false
+              label: grafana_datasource
+              folder: /tmp/datasources
+              searchNamespace: ALL
+              resources:
+                requests:
+                  memory: "50Mi"
+                  cpu: "25m"
+                limits:
+                  memory: "100Mi"
+                  cpu: "50m"
+  # 자동 동기화 및 자기 복구 비활성화
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
