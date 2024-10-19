@@ -33,7 +33,6 @@ spec:
             type: statefulset
             enabled: true
             size: 5Gi
-            storageClassName: local-storage
           datasources:
             datasources.yaml:
               apiVersion: 1
