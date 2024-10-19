@@ -32,7 +32,7 @@ spec:
           persistence:
             type: statefulset
             enabled: true
-            size: 5Gi
+            storageClassName: local-path
           datasources:
             datasources.yaml:
               apiVersion: 1
