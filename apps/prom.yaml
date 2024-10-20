@@ -89,9 +89,9 @@ spec:
                 limits:
                   memory: "100Mi"
                   cpu: "50m"
-syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
+  syncPolicy:
+      automated:
+        prune: true
+        selfHeal: true
+      syncOptions:
+        - CreateNamespace=true
