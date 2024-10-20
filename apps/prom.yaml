@@ -1,0 +1,98 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: prometheus
+  namespace: argocd      
+spec:
+  destination:
+    namespace: monitoring
+    server: https://kubernetes.default.svc
+  project: default
+  source:
+    chart: kube-prometheus-stack
+    repoURL: https://prometheus-community.github.io/helm-charts
+    targetRevision: 33.2.0
+    helm:
+      skipCrds: true
+      values: |
+        prometheus:
+          prometheusSpec:
+            serviceMonitorSelectorNilUsesHelmValues: false
+            resources:
+              requests:
+                memory: "500Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+        grafana:
+          grafana.ini:
+            feature_toggles:
+              enable: tempoSearch      # To enable search option for tempo traces on Grafana
+          persistence:
+            type: statefulset          # To deploy Grafana as a StatefulSet
+            enabled: true
+            size: 5Gi                  # Size of volume used by Grafana for storing dashboards created from the Grafana UI
+            storageClassName: local-path   # 동적 프로비저닝을 위한 StorageClass 이름 (필요에 따라 'standard' 등으로 변경)
+            existingClaim: ""         # 기존 PVC를 사용하지 않도록 설정 (동적 프로비저닝 시 필요 없음)
+          datasources:                 # Omit this if no additional datasources are required
+            datasources.yaml:
+              apiVersion: 1
+              datasources:
+              - name: Loki             # Adding Loki as datasource
+                type: loki
+                uid: Loki
+                access: proxy
+                editable: false
+                url: http://loki-gateway.monitoring:80     # DNS of loki-gateway
+                jsonData:                                  # To setup integration between Loki and Tempo
+                  derivedFields:
+                    - datasourceUid: Tempo
+                      matcherRegex: "(?:traceID|traceId)(?:=|\\s)(\\w+)"
+                      name: TraceID
+                      url: "$${__value.raw}"
+              - name: Tempo                         # Adding Tempo datasource
+                type: tempo
+                uid: Tempo
+                access: proxy
+                editable: false
+                url: http://tempo-gateway.monitoring:80
+          resources:                                # Grafana 리소스 요청 및 제한 추가
+            requests:
+              memory: "200Mi"
+              cpu: "100m"
+            limits:
+              memory: "500Mi"
+              cpu: "200m"
+          sidecar:                              
+            dashboards:
+              enabled: true                        # To enable dashboards as configMaps automatically picked up by Grafana
+              label: grafana_dashboard             # Label the configMaps should have in order to be added
+              folder: /tmp/dashboards
+              searchNamespace: ALL                 # To look for dashboard configMaps in all namespaces
+              resources:                           # 사이드카 컨테이너 리소스 요청 및 제한 추가
+                requests:
+                  memory: "100Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "200Mi"
+                  cpu: "100m"
+            datasources:
+              enabled: true                        # 예시: 추가 datasources 사이드카가 필요한 경우 활성화
+              label: grafana_datasource
+              folder: /tmp/datasources
+              searchNamespace: ALL
+              resources:                            # datasources 사이드카 리소스 요청 및 제한 (필요 시)
+                requests:
+                  memory: "50Mi"
+                  cpu: "25m"
+                limits:
+                  memory: "100Mi"
+                  cpu: "50m"
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - Replace=true
+    - ApplyOutOfSyncOnly=true
